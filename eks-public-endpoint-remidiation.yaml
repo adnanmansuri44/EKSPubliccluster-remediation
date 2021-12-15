@@ -1,0 +1,57 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Config Rules and Auto Remidiate for EKS Cluster with public endpoint.
+Resources:
+  eksremediaionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: EKSAutomationAssumeRole
+      Description: EKS-Remediaion - Role used by SSM for deleting Public EKS Cluster
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "ssm.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      Policies:
+      - PolicyName: publiceksremediaion
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+          - Effect: Allow
+            Action:
+              - eks:DeleteCluster
+              - eks:ListFargateProfiles
+              - eks:ListNodegroups
+            Resource: "*"         
+  ekspublicendpointrule:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: eks-endpoint-no-public-access
+      Description: Checks whether Amazon Elastic Kubernetes Service (Amazon EKS) endpoint is not publicly accessible. The rule is NON_COMPLIANT if the endpoint is publicly accessible.
+      MaximumExecutionFrequency: One_Hour
+      Source:
+        Owner: AWS
+        SourceIdentifier: EKS_ENDPOINT_NO_PUBLIC_ACCESS  
+  ekspublicendpointRemediation:
+    Type: AWS::Config::RemediationConfiguration
+    Properties:
+        ConfigRuleName: !Ref ekspublicendpointrule
+        Parameters:
+            AutomationAssumeRole:
+                StaticValue:
+                    Values: 
+                    - !GetAtt eksremediaionRole.Arn
+            EKSClusterName:
+                ResourceValue:
+                    Value: "RESOURCE_ID"
+        TargetId: "AWS-DeleteEKSCluster"
+        TargetType: "SSM_DOCUMENT"
+        TargetVersion: "1"
+        Automatic: True
+        MaximumAutomaticAttempts: 5
+        RetryAttemptSeconds: 60
